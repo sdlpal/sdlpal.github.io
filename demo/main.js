@@ -5,9 +5,9 @@ var spinnerElement = document.getElementById('spinner');
 var Module = {
     preRun: [],
     postRun: [],
-    print: (function(text) {
+    print: function(text) {
         console.log(text);
-    })(),
+    },
     printErr: function(text) {
         console.error(text);
     },
@@ -104,6 +104,51 @@ function loadZip() {
     });
 }
 
+function clearData() {
+    if (window.prompt("This will DELETE your game data and saved games stored in browser cache. Type 'YES' to continue.") === "YES") {
+        var doDelete = function(path) {
+            Object.keys(FS.lookupPath(path).node.contents).forEach(element => {
+                var stat = FS.stat(path + '/' + element);
+                if (stat.mode & 0040000) {
+                    doDelete(path + '/' + element);
+                    FS.rmdir(path + '/' + element);
+                } else {
+                    FS.unlink(path + '/' + element);
+                }
+            });
+        };
+        Module.setStatus('Deleting...');
+        spinnerElement.style.display = 'inline-block';
+        doDelete('/data');
+        Module.setStatus('Syncing FS...');
+        FS.syncfs(false, function (err) {
+            spinnerElement.style.display = 'none';
+            Module.setStatus('Done.');
+        });
+    }
+}
+
+function downloadSaves() {
+    var zip = new JSZip();
+    var hasData = false;
+    Object.keys(FS.lookupPath('/data').node.contents).forEach(element => {
+        if (element.endsWith('.rpg')) {
+            var array = FS.readFile('/data/' + element);
+            zip.file(element, array);
+            hasData = true;
+        }
+    });
+    if (!hasData) {
+        window.alert('Cannot find saved games to download');
+        return;
+    }
+    zip.generateAsync({type:"base64"}).then(function (base64) {
+        window.location = "data:application/zip;base64," + base64;
+    }, function (err) {
+        Module.printErr(err);
+    });
+}
+
 async function runGame() {
     mainFunc = Module.cwrap('EMSCRIPTEN_main', 'number', ['number', 'number'], {async:true});
     mainFunc(0, 0);
@@ -123,6 +168,7 @@ function launch() {
     }
     document.getElementById('btnLaunch').style = "display:none";
     document.getElementById('btnLoadZip').style = "display:none";
+    document.getElementById('btnDeleteData').style = "display:none";
     runGame();
 }
 
